@@ -1,2 +1,6 @@
 # HEXA_UPF
-eBPF defined User Plane Function
+
+## Architecture
+
+### An Overview Snapshot
+![hexa_upf_architecture](./docs/images/hexa_upf_architecture.png)

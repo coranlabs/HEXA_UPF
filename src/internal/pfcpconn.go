@@ -11,17 +11,18 @@ import (
 
 func CreateConn(addr string, nodeid string, n3Ip string) (*PfcpConn, error) {
 	udpAddr := "192.168.1.2"
-	if udpAddr != nil {
-		return nil, nil
+	udpAddrIp, err := net.ResolveUDPAddr("udp", udpAddr)
+	if err != nil {
+		return nil, err
 	}
-	udpConn, err := net.ListenUDP("udp", udpAddr)
+	udpConn, err := net.ListenUDP("udp", udpAddrIp)
 	if err != nil {
 		return nil, err
 	}
 	return &PfcpConn{
 		udpConn:           udpConn,
 		nodeId:            nodeid,
-		nodeAddrV4:        udpAddr.IP,
+		nodeAddrV4:        udpAddrIp.IP,
 		RecoveryTimestamp: time.Now(),
 	}, nil
 }
@@ -37,12 +38,20 @@ func (connection *PfcpConn) Run() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		log.Debugf("Received %d bytes from %s", n, addr)
+		log.Printf("Received %d bytes from %s", n, addr)
+		
 	}
 }
 
 func (connection *PfcpConn) Receive(b []byte) (n int, addr *net.UDPAddr, err error) {
 	return connection.udpConn.ReadFromUDP(b)
+}
+
+func (connection *PfcpConn) Handle(b []byte, addr *net.UDPAddr) {
+	err := Handle(connection, b, addr)
+	if err != nil {
+		log.Printf("Error handling PFCP message: %s", err.Error())
+	}
 }
 
 func (connection *PfcpConn) Close() {}

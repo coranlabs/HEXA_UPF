@@ -39,7 +39,7 @@ func (connection *PfcpConn) Run() {
 			continue
 		}
 		log.Printf("Received %d bytes from %s", n, addr)
-		
+		connection.Handle(buf[:n], addr)
 	}
 }
 

@@ -13,6 +13,8 @@ import (
 var (
 	log    *logrus.Logger
 	AppLog *logrus.Entry
+	InitLog   *logrus.Entry
+	ConfigLog *logrus.Entry
 )
 
 func init() {
@@ -28,6 +30,8 @@ func init() {
 	}
 
 	AppLog = log.WithFields(logrus.Fields{"component": "HEXA_UPF", "category": "App"})
+	InitLog = log.WithFields(logrus.Fields{"component": "HEXA_UPF", "category": "Init"})
+	ConfigLog = log.WithFields(logrus.Fields{"component": "HEXA_UPF", "category": "CFG"})
 }
 
 func SetLogLevel(level logrus.Level) {

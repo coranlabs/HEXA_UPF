@@ -6,6 +6,7 @@ package internal
 import (
 	"log"
 	"net"
+	"time"
 
 	"github.com/coranlabs/HEXA_UPF/src/logger"
 	infoElement "github.com/wmnsk/go-pfcp/ie"
@@ -13,6 +14,7 @@ import (
 )
 
 func Handle(conn *PfcpConn, buf []byte, addr *net.UDPAddr) error {
+	go CheckAssociation(conn)
 	msg, err := mes.Parse(buf)
 	stringIpAddr := addr.IP.String()
 	if err != nil {
@@ -37,22 +39,39 @@ func Handle(conn *PfcpConn, buf []byte, addr *net.UDPAddr) error {
 }
 
 func HandlePfcpAssociationSetupRequest(conn *PfcpConn, msg mes.Message, addr string) (mes.Message, error) {
-	asreq := msg.(*mes.AssociationSetupRequest)
-	remoteNodeID, err := asreq.NodeID.NodeID()
-	logger.AppLog.Infof("Handling association Setup Request from: %s ", addr)
-	logger.AppLog.Infof("nodeip: %s", remoteNodeID)
+	req := msg.(*mes.AssociationSetupRequest)
+	remoteNodeID, err := req.NodeID.NodeID()
+	logger.AppLog.Infof("Association Setup Request from: %s with NodeID: %s", addr, remoteNodeID)
+
+	logger.AppLog.Traceln("Nodeip: ", remoteNodeID)
 	if err != nil {
 		logger.AppLog.Infof("Got Association Setup Request with invalid NodeID from: %s", addr)
-		asres := mes.NewAssociationSetupResponse(asreq.SequenceNumber,
+		asres := mes.NewAssociationSetupResponse(req.SequenceNumber,
 			infoElement.NewCause(infoElement.CauseMandatoryIEMissing),
 		)
 		return asres, nil
 	}
 
-	res := mes.NewAssociationSetupResponse(asreq.SequenceNumber,
-		infoElement.NewCause(infoElement.CauseRequestRejected),
+	if conn.NodeAssociations == nil {
+		conn.NodeAssociations = make(map[string]*NodeAssociation)
+	}
+
+	logger.AppLog.Trace(conn.NodeAssociations)
+
+	remoteNode := NewNodeAssociation(remoteNodeID, addr)
+	logger.AppLog.Trace("remotenode value", remoteNode)
+
+	logger.AppLog.Trace(conn.nodeId)
+	conn.NodeAssociations[addr] = remoteNode
+	featuresOctets := []uint8{0, 0, 0}
+	upFunctionFeaturesIE := infoElement.NewUPFunctionFeatures(featuresOctets[:]...)
+	res := mes.NewAssociationSetupResponse(req.SequenceNumber,
+		infoElement.NewCause(infoElement.CauseRequestAccepted),
 		infoElement.NewRecoveryTimeStamp(conn.RecoveryTimestamp),
+		upFunctionFeaturesIE,
 	)
+	logger.AppLog.Traceln("response: ", res)
+	logger.AppLog.Infof("Association Accepted")
 	return res, nil
 }
 
@@ -82,4 +101,41 @@ func (connection *PfcpConn) SendMessage(msg mes.Message, addr *net.UDPAddr) erro
 
 func (connection *PfcpConn) Send(b []byte, addr *net.UDPAddr) (int, error) {
 	return connection.udpConn.WriteTo(b, addr)
+}
+
+func CheckAssociation(conn *PfcpConn) {
+	go func() {
+		for {
+			conn.RefreshAssociations()
+			// 5 is hard coded the value should be provided through config
+			time.Sleep(time.Duration(5) * time.Second)
+		}
+	}()
+}
+
+func (connection *PfcpConn) RefreshAssociations() {
+	for _, assoc := range connection.NodeAssociations {
+		if !assoc.HeartbeatsActive {
+			go assoc.ScheduleHeartbeat(connection)
+		}
+	}
+}
+
+func (connection *PfcpConn) GetAssociation(assocAddr string) *NodeAssociation {
+	if assoc, ok := connection.NodeAssociations[assocAddr]; ok {
+		return assoc
+	}
+	return nil
+}
+
+func newIeNodeID(nodeID string) *infoElement.IE {
+	ip := net.ParseIP(nodeID)
+	logger.AppLog.Trace("node ip from newIeNodeID", ip)
+	if ip != nil {
+		if ip.To4() != nil {
+			return infoElement.NewNodeID(nodeID, "", "")
+		}
+		return infoElement.NewNodeID("", nodeID, "")
+	}
+	return infoElement.NewNodeID("", "", nodeID)
 }
